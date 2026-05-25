@@ -310,9 +310,11 @@ function showLoading(visible) {
 async function fetchAllData() {
   showLoading(true);
   try {
-    const response = await fetch(URL_API, {
+    // Tambahkan cache buster timestamp agar browser tidak menyimpan cache respons lama
+    const cacheBuster = `?_cb=${new Date().getTime()}`;
+    const response = await fetch(URL_API + cacheBuster, {
       method: 'GET',
-      // Menggunakan default 'cors' agar sinkronisasi redirect berjalan mulus di browser
+      redirect: 'follow'
     });
 
     if (!response.ok) {
@@ -320,14 +322,33 @@ async function fetchAllData() {
     }
 
     const res = await response.json();
-    console.log("Data berhasil diterima dari GScript:", res);
+    console.log("Data murni berhasil diterima dari GScript:", res);
 
-    ordersData = res.orders || [];
-    qcData = res.qc || [];
+    // ─── SISTEM SINKRONISASI ADAPTIF (ANTI-CRASH) ───
+    let ordersRaw = [];
+    let qcRaw = [];
+
+    // Deteksi keberadaan wrapper objek atau jika response berupa array langsung
+    if (res && res.orders) {
+      ordersRaw = res.orders;
+    } else if (res && res.data && res.data.orders) {
+      ordersRaw = res.data.orders;
+    } else if (Array.isArray(res)) {
+      ordersRaw = res;
+    }
+
+    if (res && res.qc) {
+      qcRaw = res.qc;
+    } else if (res && res.data && res.data.qc) {
+      qcRaw = res.data.qc;
+    }
+
+    // Pastikan instansiasi fallback ke array kosong untuk mencegah error .map() / .filter()
+    ordersData = Array.isArray(ordersRaw) ? ordersRaw : [];
+    qcData = Array.isArray(qcRaw) ? qcRaw : [];
 
     ordersData = ordersData.map(o => {
       let parsedBahan = [];
-      // PENYEMPURNAAN: Deteksi tipe data respons secara fleksibel
       if (typeof o.bahan === 'string' && o.bahan.trim() !== '') {
         try {
           parsedBahan = JSON.parse(o.bahan);
@@ -361,7 +382,9 @@ async function fetchAllData() {
 
   } catch (error) {
     console.error("Gagal memproses load data dari Spreadsheet:", error);
+    alert("Terjadi kegagalan sinkronisasi format data: " + error.message);
   } finally {
+    // Blok finally menjamin loading penutup dipanggil baik proses try sukses maupun masuk ke catch error
     showLoading(false);
   }
 }  
@@ -377,7 +400,6 @@ async function postData(action, payload) {
     });
     const resText = await response.text();
     console.log("Respon POST:", resText);
-    // Jalankan load data ulang setelah perubahan sukses disimpan di awan
     await fetchAllData();
   } catch (e) {
     console.error("Gagal sinkronisasi data ke GSheet:", e);
@@ -901,7 +923,6 @@ function updateChart(cats = {}) {
 // ─── EXCEL EXPORT ─────────────────────────────────────────────
 function xlW(ws,ws2) { ws['!cols']=ws2.map(w=>({wch:w})); }
 
-// Penambahan pengaman pembacaan array pada ekspor Excel
 function exportFullExcel() {
   const wb  = XLSX.utils.book_new();
   const exp = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
