@@ -293,16 +293,15 @@
 </div>
 
 <script>
-// URL API Web App Google Apps Script Anda
 const URL_API = 'https://script.google.com/macros/s/AKfycbw0Nj-XgSpzmiTUy85XriRBEoswBdYNED24alYp0HV793AGWR8vTp35MRNA1MR7thBGMQ/exec';
 
 let ordersData = [];
 let qcData = [];
-let catChart;
+let catChart = null;
 
-// Fungsi pembantu efek loading indicator
 function showLoading(visible) {
   const toast = document.getElementById('loadingToast');
+  if (!toast) return;
   if (visible) toast.classList.remove('opacity-0', 'pointer-events-none');
   else toast.classList.add('opacity-0', 'pointer-events-none');
 }
@@ -356,7 +355,6 @@ async function fetchAllData() {
 
   } catch (error) {
     console.error("Gagal memproses load data dari Spreadsheet:", error);
-    alert("Gagal memuat database otomatis dari Google Sheets.\nError: " + error.message + "\n\nSistem akan beralih menggunakan data lokal sementara.");
   } finally {
     showLoading(false);
   }
@@ -398,6 +396,7 @@ function getReturnColor(s) {
 // ─── BAHAN ROWS ───────────────────────────────────────────────
 function addBahanRow(nama='', harga='', qty='') {
   const c = document.getElementById('bahanContainer');
+  if(!c) return;
   const d = document.createElement('div');
   d.className = 'bahan-row bg-white border border-slate-200 rounded-lg px-2 py-1.5';
   d.innerHTML = `
@@ -432,15 +431,17 @@ function recalcAll() {
   const gt   = Math.round(sell * qty * 1.11);
   const hppPcs = qty > 0 ? Math.round(hpp / qty) : 0;
 
-  document.getElementById('totalBahan').innerText = fmt(totalBahan);
-  document.getElementById('biayaJasa').innerText  = fmt(jasa);
-  document.getElementById('hppTotal').innerText   = fmt(hpp);
-  document.getElementById('hppPerPcs').innerText  = fmt(hppPcs);
-  document.getElementById('grandTotal').innerText = fmt(gt);
+  if(document.getElementById('totalBahan')) document.getElementById('totalBahan').innerText = fmt(totalBahan);
+  if(document.getElementById('biayaJasa')) document.getElementById('biayaJasa').innerText  = fmt(jasa);
+  if(document.getElementById('hppTotal')) document.getElementById('hppTotal').innerText   = fmt(hpp);
+  if(document.getElementById('hppPerPcs')) document.getElementById('hppPerPcs').innerText  = fmt(hppPcs);
+  if(document.getElementById('grandTotal')) document.getElementById('grandTotal').innerText = fmt(gt);
 }
 
 function loadBahanToForm(arr) {
-  document.getElementById('bahanContainer').innerHTML = '';
+  const container = document.getElementById('bahanContainer');
+  if(!container) return;
+  container.innerHTML = '';
   if(arr && arr.length) arr.forEach(b => addBahanRow(b.nama, b.harga, b.qty));
   else addBahanRow();
 }
@@ -451,10 +452,14 @@ function openNewOrderModal() {
   document.getElementById('orderModalTitle').innerText = 'Input New Merchandise Order';
   document.getElementById('orderSaveBtn').innerText = 'Save Order';
   document.getElementById('orderSaveBtn').className = 'mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg';
-  ['company','qty','pic','selling','deadline'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('product').value = 'Tote Bag';
-  document.getElementById('productCustom').value = '';
-  document.getElementById('productCustom').classList.add('hidden');
+  ['company','qty','pic','selling','deadline'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  if(document.getElementById('product')) document.getElementById('product').value = 'Tote Bag';
+  if(document.getElementById('productCustom')) {
+    document.getElementById('productCustom').value = '';
+    document.getElementById('productCustom').classList.add('hidden');
+  }
   loadBahanToForm([]);
   recalcAll();
   document.getElementById('orderModal').classList.remove('hidden');
@@ -487,6 +492,7 @@ function openEditOrderModal(idx) {
 function closeOrderModal() { document.getElementById('orderModal').classList.add('hidden'); }
 function handleProductChange() {
   const c = document.getElementById('productCustom');
+  if(!c) return;
   if(document.getElementById('product').value === '__lainnya__') { c.classList.remove('hidden'); c.focus(); }
   else { c.classList.add('hidden'); c.value = ''; }
 }
@@ -637,7 +643,6 @@ function updateDashboard() {
   let returns = ordersData.filter(o => o.returnStatus === 'Pending' || o.returnStatus === 'Approved').length;
 
   const productCount = {};
-  const materialUsage = {};
 
   ordersData.forEach(o => {
     const cost = Number(o.cost) || 0;
@@ -653,14 +658,6 @@ function updateDashboard() {
 
     if (o.product) {
       productCount[o.product] = (productCount[o.product] || 0) + 1;
-    }
-
-    if (o.bahan && Array.isArray(o.bahan)) {
-      o.bahan.forEach(b => {
-        if (b && b.nama) {
-          materialUsage[b.nama] = (materialUsage[b.nama] || 0) + (Number(b.qty) || 0);
-        }
-      });
     }
   });
 
@@ -776,18 +773,20 @@ async function deleteOrder(idx) {
 // ─── QC & RETURN HANDLERS ────────────────────────────────────
 function openQCModal() {
   const sel = document.getElementById('qcOrderSelect');
+  if(!sel) return;
   sel.innerHTML = '<option value="">-- Pilih Order --</option>';
   ordersData.forEach((o,i) => { sel.innerHTML += `<option value="${i}">${o.id} [${o.company}]</option>`; });
-  document.getElementById('qcOrderDetails').classList.add('hidden');
-  ['qcNote'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('qcResult').value='PASS';
-  ['chkLogo','chkJahitan','chkQty'].forEach(id => document.getElementById(id).checked=false);
+  if(document.getElementById('qcOrderDetails')) document.getElementById('qcOrderDetails').classList.add('hidden');
+  ['qcNote'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  if(document.getElementById('qcResult')) document.getElementById('qcResult').value='PASS';
+  ['chkLogo','chkJahitan','chkQty'].forEach(id => { const el = document.getElementById(id); if(el) el.checked=false; });
   toggleModal('qcModal');
 }
 
 function handleQCOrderChange() {
   const idx = document.getElementById('qcOrderSelect').value;
   const d   = document.getElementById('qcOrderDetails');
+  if(!d) return;
   if(!idx) { d.classList.add('hidden'); return; }
   const o = ordersData[idx];
   d.innerHTML = `<p class="font-semibold mb-1">📦 Ringkasan:</p><div><strong>Klien:</strong> ${o.company}</div><div><strong>Item:</strong> ${o.product} · ${o.qty} pcs</div><div><strong>HPP:</strong> ${fmt(o.hpp||0)}</div>`;
@@ -839,13 +838,14 @@ async function saveReturnLog() {
 }
 
 // ─── WINDOW HELPERS ───────────────────────────────────────────
-function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'); }
-function toggleSidebar() { const s=document.getElementById('sidebar'); s.classList.toggle('collapsed'); localStorage.setItem('sidebarCollapsed',s.classList.contains('collapsed')); }
-function showSection(id,el) { document.querySelectorAll('.section').forEach(s=>s.classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('bg-slate-700','border-l-4','border-blue-500')); el.classList.add('bg-slate-700','border-l-4','border-blue-500'); }
+function toggleModal(id) { const el = document.getElementById(id); if(el) el.classList.toggle('hidden'); }
+function toggleSidebar() { const s=document.getElementById('sidebar'); if(!s) return; s.classList.toggle('collapsed'); localStorage.setItem('sidebarCollapsed',s.classList.contains('collapsed')); }
+function showSection(id,el) { document.querySelectorAll('.section').forEach(s=>s.classList.add('hidden')); const targeted = document.getElementById(id); if(targeted) targeted.classList.remove('hidden'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('bg-slate-700','border-l-4','border-blue-500')); if(el) el.classList.add('bg-slate-700','border-l-4','border-blue-500'); }
 
 function updateChart(cats = {}) {
   const ctx = document.getElementById('categoryChart');
-  if(!ctx) return;
+  if(!ctx) return; // PROTEKSI UTAMA: Hentikan script jika canvas belum siap di layar browser
+  
   const ctx2d = ctx.getContext('2d');
   if(catChart) catChart.destroy();
   
@@ -927,7 +927,8 @@ function exportFullExcel() {
 }
 
 window.onload = function() {
-  if(localStorage.getItem('sidebarCollapsed')==='true') document.getElementById('sidebar').classList.add('collapsed');
+  const sidebar = document.getElementById('sidebar');
+  if(sidebar && localStorage.getItem('sidebarCollapsed')==='true') sidebar.classList.add('collapsed');
   fetchAllData();
 };
 </script>
