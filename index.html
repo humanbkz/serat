@@ -311,8 +311,7 @@ function showLoading(visible) {
 async function fetchAllData() {
   showLoading(true);
   try {
-    // Memaksa browser mengikuti redirect (302) khas Google Apps Script
-    const response = await fetch(API_URL, {
+    const response = await fetch(URL_API, {
       method: 'GET',
       redirect: 'follow'
     });
@@ -322,15 +321,12 @@ async function fetchAllData() {
     }
 
     const res = await response.json();
-    console.log("Data berhasil diterima dari GScript:", res); // Untuk cek di Console F12
+    console.log("Data berhasil diterima dari GScript:", res);
 
-    // PENGAMAN 1: Pastikan data orders dan qc berbentuk Array
     ordersData = res.orders || [];
     qcData = res.qc || [];
 
-    // PENGAMAN 2: Konversi paksa data string angka dari spreadsheet menjadi tipe Number asli
     ordersData = ordersData.map(o => {
-      // Jika format array 'bahan' di spreadsheet rusak/berupa string kosong, amankan menjadi array kosong
       if (typeof o.bahan === 'string') {
         try {
           o.bahan = JSON.parse(o.bahan);
@@ -354,7 +350,6 @@ async function fetchAllData() {
       };
     });
 
-    // Jalankan pembaruan UI utama
     updateDashboard();
     renderOrdersTable();
     renderQCTable();
@@ -362,15 +357,12 @@ async function fetchAllData() {
   } catch (error) {
     console.error("Gagal memproses load data dari Spreadsheet:", error);
     alert("Gagal memuat database otomatis dari Google Sheets.\nError: " + error.message + "\n\nSistem akan beralih menggunakan data lokal sementara.");
-    
-    // Jika gagal, matikan loading agar user bisa tetap melihat dashboard kosong/lokal
-    showLoading(false);
   } finally {
-    // Menjamin animasi loading pasti tertutup baik proses sukses maupun gagal
     showLoading(false);
   }
 }  
-  // ─── KIRIM DATA / MODIFIKASI KE GOOGLE SHEET (POST) ───────────
+
+// ─── KIRIM DATA / MODIFIKASI KE GOOGLE SHEET (POST) ───────────
 async function postData(action, payload) {
   showLoading(true);
   try {
@@ -530,17 +522,17 @@ async function saveOrder() {
     await postData('createOrder', order);
   }
   
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  renderOrders(); closeOrderModal();
+  renderOrdersTable(); closeOrderModal();
 }
 
 // ─── RENDER FUNCTIONS ─────────────────────────────────────────
-function renderOrders() {
+function renderOrdersTable() {
   const tbody = document.getElementById('ordersTbody');
-  const q = document.getElementById('searchOrders').value.toLowerCase();
+  if(!tbody) return;
+  const q = document.getElementById('searchOrders') ? document.getElementById('searchOrders').value.toLowerCase() : '';
   tbody.innerHTML = '';
   ordersData.forEach((o, idx) => {
-    if(!o.id.toLowerCase().includes(q) && !o.company.toLowerCase().includes(q)) return;
+    if(q && !o.id.toLowerCase().includes(q) && !o.company.toLowerCase().includes(q)) return;
     const hpp = o.hpp || 0;
     const hppPcs = o.qty > 0 ? Math.round(hpp / o.qty) : 0;
     tbody.innerHTML += `
@@ -582,7 +574,11 @@ function renderOrders() {
         </td>
       </tr>`;
   });
-  renderDashboard(); renderProductionQueue(); renderFinance();
+  updateDashboard(); renderProductionQueue(); renderFinance();
+}
+
+function renderOrders() {
+  renderOrdersTable();
 }
 
 function viewDetail(idx) {
@@ -631,23 +627,63 @@ function viewDetail(idx) {
   toggleModal('detailModal');
 }
 
-function renderDashboard() {
-  const totalRev = ordersData.reduce((s,o) => s+Number(o.cost), 0);
-  const active   = ordersData.filter(o => o.status==='Production').length;
-  const returns  = ordersData.filter(o => o.returnStatus==='Pending'||o.returnStatus==='Approved').length;
-  document.getElementById('kpiOrders').innerText    = ordersData.length;
-  document.getElementById('productionKPI').innerText= active;
-  document.getElementById('returKPI').innerText     = returns;
-  document.getElementById('revenueKPI').innerText   = fmt(totalRev);
-  const dq = document.getElementById('dashProdQueue'); dq.innerHTML = '';
-  const prod = ordersData.filter(o => o.status==='Production');
-  if(!prod.length) { dq.innerHTML='<p class="text-xs text-slate-400">No active production</p>'; }
-  prod.forEach(o => { dq.innerHTML += `<div><div class="flex justify-between text-xs mb-1"><span>${o.id} — ${o.company}</span><span class="font-bold">${o.progress}%</span></div><div class="w-full bg-slate-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${o.progress}%"></div></div></div>`; });
-  updateChart();
+function updateDashboard() {
+  if (!ordersData || !Array.isArray(ordersData)) return;
+
+  let totalRevenue = 0;
+  let totalHPP = 0;
+  let totalMargin = 0;
+  let activeOrders = 0;
+  let returns = ordersData.filter(o => o.returnStatus === 'Pending' || o.returnStatus === 'Approved').length;
+
+  const productCount = {};
+  const materialUsage = {};
+
+  ordersData.forEach(o => {
+    const cost = Number(o.cost) || 0;
+    const hpp = Number(o.hpp) || 0;
+    
+    totalRevenue += cost;
+    totalHPP += hpp;
+    totalMargin += (cost - hpp);
+
+    if (o.status && o.status === 'Production') {
+      activeOrders++;
+    }
+
+    if (o.product) {
+      productCount[o.product] = (productCount[o.product] || 0) + 1;
+    }
+
+    if (o.bahan && Array.isArray(o.bahan)) {
+      o.bahan.forEach(b => {
+        if (b && b.nama) {
+          materialUsage[b.nama] = (materialUsage[b.nama] || 0) + (Number(b.qty) || 0);
+        }
+      });
+    }
+  });
+
+  if(document.getElementById('kpiOrders')) document.getElementById('kpiOrders').innerText = ordersData.length;
+  if(document.getElementById('productionKPI')) document.getElementById('productionKPI').innerText = activeOrders;
+  if(document.getElementById('returKPI')) document.getElementById('returKPI').innerText = returns;
+  if(document.getElementById('revenueKPI')) document.getElementById('revenueKPI').innerText = fmt(totalRevenue);
+
+  const dq = document.getElementById('dashProdQueue'); 
+  if(dq) {
+    dq.innerHTML = '';
+    const prod = ordersData.filter(o => o.status === 'Production');
+    if(!prod.length) { dq.innerHTML = '<p class="text-xs text-slate-400">No active production</p>'; }
+    prod.forEach(o => { dq.innerHTML += `<div><div class="flex justify-between text-xs mb-1"><span>${o.id} — ${o.company}</span><span class="font-bold">${o.progress}%</span></div><div class="w-full bg-slate-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${o.progress}%"></div></div></div>`; });
+  }
+
+  updateChart(productCount);
 }
 
 function renderProductionQueue() {
-  const c = document.getElementById('productionQueueList'); c.innerHTML='';
+  const c = document.getElementById('productionQueueList'); 
+  if(!c) return;
+  c.innerHTML='';
   const prod = ordersData.filter(o => o.status==='Production');
   if(!prod.length) { c.innerHTML='<p class="text-sm text-slate-400 col-span-full">Antrean produksi kosong.</p>'; return; }
   prod.forEach(o => {
@@ -662,7 +698,9 @@ function renderProductionQueue() {
 }
 
 function renderFinance() {
-  const tbody = document.getElementById('financeTbody'); tbody.innerHTML='';
+  const tbody = document.getElementById('financeTbody'); 
+  if(!tbody) return;
+  tbody.innerHTML='';
   let paid=0, unpaid=0, loss=0;
   ordersData.forEach(o => {
     const cost = Number(o.cost), hpp = Number(o.hpp)||0, margin = cost-hpp;
@@ -678,13 +716,15 @@ function renderFinance() {
       <td class="p-3 text-red-500">${lossEst>0?fmt(lossEst):'-'}</td>
     </tr>`;
   });
-  document.getElementById('financePaid').innerText    = fmt(paid);
-  document.getElementById('financeUnpaid').innerText  = fmt(unpaid);
-  document.getElementById('financeRefunds').innerText = fmt(loss);
+  if(document.getElementById('financePaid')) document.getElementById('financePaid').innerText = fmt(paid);
+  if(document.getElementById('financeUnpaid')) document.getElementById('financeUnpaid').innerText = fmt(unpaid);
+  if(document.getElementById('financeRefunds')) document.getElementById('financeRefunds').innerText = fmt(loss);
 }
 
-function renderQC() {
-  const c = document.getElementById('qcList'); c.innerHTML='';
+function renderQCTable() {
+  const c = document.getElementById('qcList'); 
+  if(!c) return;
+  c.innerHTML='';
   qcData.forEach((item,idx) => {
     c.innerHTML += `<div class="border rounded-xl p-3 bg-slate-50 flex justify-between items-center text-xs"><div><p class="font-bold">${item.order} <span class="ml-2 px-2 py-0.5 rounded text-[10px] ${item.result==='PASS'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${item.result}</span></p><p class="text-slate-500 mt-1">${item.note}</p></div><button onclick="deleteQC(${idx})" class="text-red-400 hover:text-red-600">Delete</button></div>`;
   });
@@ -694,8 +734,7 @@ function renderQC() {
 async function updateProgress(idx,v) { 
   ordersData[idx].progress=Number(v); 
   if(Number(v)===100&&ordersData[idx].status==='Production') ordersData[idx].status='QC'; 
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  renderOrders(); 
+  renderOrdersTable(); 
   await postData('updateOrder', ordersData[idx]);
 }
 
@@ -704,15 +743,13 @@ async function updatePayment(idx,v) {
   ordersData[idx].payment=v; 
   if(v==='Paid'&&!ordersData[idx].datePaid) ordersData[idx].datePaid=today; 
   if(v==='Unpaid') ordersData[idx].datePaid=''; 
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  renderOrders(); 
+  renderOrdersTable(); 
   await postData('updateOrder', ordersData[idx]);
 }
 
 async function updateReturnStatus(idx,v) { 
   ordersData[idx].returnStatus=v; 
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  renderOrders(); 
+  renderOrdersTable(); 
   await postData('updateOrder', ordersData[idx]);
 }
 
@@ -723,8 +760,7 @@ async function updateStatus(idx,v) {
   if(v==='Completed') o.progress=100; 
   if(v==='QC'&&!o.dateQC) o.dateQC=today; 
   if(v==='Shipping'&&!o.dateShipping) o.dateShipping=today; 
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  renderOrders(); 
+  renderOrdersTable(); 
   await postData('updateOrder', o);
 }
 
@@ -732,8 +768,7 @@ async function deleteOrder(idx) {
   if(confirm('Hapus order ini?')) { 
     const orderId = ordersData[idx].id;
     ordersData.splice(idx,1); 
-    localStorage.setItem('ordersData', JSON.stringify(ordersData));
-    renderOrders(); 
+    renderOrdersTable(); 
     await postData('deleteOrder', { id: orderId });
   } 
 }
@@ -773,9 +808,7 @@ async function saveQCLog() {
   if(result==='PASS') { o.status='Shipping'; o.progress=100; if(!o.dateQC) o.dateQC=today; if(!o.dateShipping) o.dateShipping=today; }
   else { o.status='Production'; o.progress=50; o.dateQC=today; o.dateShipping=''; }
   
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  localStorage.setItem('qcData', JSON.stringify(qcData));
-  renderOrders(); renderQC(); toggleModal('qcModal');
+  renderOrdersTable(); renderQCTable(); toggleModal('qcModal');
   
   await postData('createQC', { order: o, qc: newQC });
 }
@@ -783,8 +816,7 @@ async function saveQCLog() {
 async function deleteQC(idx) { 
   const qcItem = qcData[idx];
   qcData.splice(idx,1); 
-  localStorage.setItem('qcData', JSON.stringify(qcData));
-  renderQC(); 
+  renderQCTable(); 
   await postData('deleteQC', qcItem);
 }
 
@@ -801,8 +833,7 @@ async function saveReturnLog() {
   ordersData[idx].returnReason = document.getElementById('modalReturnReason').value||'-';
   ordersData[idx].returnStatus = 'Pending';
   
-  localStorage.setItem('ordersData', JSON.stringify(ordersData));
-  renderOrders(); toggleModal('returnModal');
+  renderOrdersTable(); toggleModal('returnModal');
   
   await postData('updateOrder', ordersData[idx]);
 }
@@ -812,12 +843,41 @@ function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'
 function toggleSidebar() { const s=document.getElementById('sidebar'); s.classList.toggle('collapsed'); localStorage.setItem('sidebarCollapsed',s.classList.contains('collapsed')); }
 function showSection(id,el) { document.querySelectorAll('.section').forEach(s=>s.classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('bg-slate-700','border-l-4','border-blue-500')); el.classList.add('bg-slate-700','border-l-4','border-blue-500'); }
 
-function updateChart() {
-  const cats={};
-  ordersData.forEach(o => { cats[o.product]=(cats[o.product]||0)+1; });
-  const ctx=document.getElementById('categoryChart').getContext('2d');
+function updateChart(cats = {}) {
+  const ctx = document.getElementById('categoryChart');
+  if(!ctx) return;
+  const ctx2d = ctx.getContext('2d');
   if(catChart) catChart.destroy();
-  catChart=new Chart(ctx, { type:'doughnut', data:{ labels:Object.keys(cats), datasets:[{ data:Object.values(cats), backgroundColor:['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ef4444'], borderWidth:0 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ boxWidth:12 } } } } });
+  
+  const labels = Object.keys(cats);
+  const dataValues = Object.values(cats);
+
+  if(labels.length === 0) {
+    labels.push("Belum ada data");
+    dataValues.push(1);
+  }
+
+  catChart = new Chart(ctx2d, { 
+    type:'doughnut', 
+    data:{ 
+      labels: labels, 
+      datasets:[{ 
+        data: dataValues, 
+        backgroundColor:['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ef4444'], 
+        borderWidth:0 
+      }] 
+    }, 
+    options:{ 
+      responsive:true, 
+      maintainAspectRatio:false, 
+      plugins:{ 
+        legend:{ 
+          position:'right', 
+          labels:{ boxWidth:12 } 
+        } 
+      } 
+    } 
+  });
 }
 
 // ─── EXCEL EXPORT ─────────────────────────────────────────────
@@ -868,8 +928,6 @@ function exportFullExcel() {
 
 window.onload = function() {
   if(localStorage.getItem('sidebarCollapsed')==='true') document.getElementById('sidebar').classList.add('collapsed');
-  
-  // Ambil data real-time langsung dari database Spreadsheet
   fetchAllData();
 };
 </script>
