@@ -308,45 +308,68 @@ function showLoading(visible) {
 }
 
 // ─── AMBIL DATA UTAMA DARI GOOGLE SHEET (GET) ─────────────────
-aasync function fetchAllData() {
-    showLoading(true);
-    try {
-        // Tambahkan properti { method: 'GET', redirect: 'follow' } 
-        // Ini memaksa GitHub Pages mengikuti pengalihan data dari server Google
-        const response = await fetch(API_URL, {
-            method: 'GET',
-            redirect: 'follow'
-        });
+async function fetchAllData() {
+  showLoading(true);
+  try {
+    // Memaksa browser mengikuti redirect (302) khas Google Apps Script
+    const response = await fetch(API_URL, {
+      method: 'GET',
+      redirect: 'follow'
+    });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const res = await response.json();
-        
-        // Validasi struktur data agar tidak crash di GitHub Pages
-        if (res && res.orders) {
-            ordersData = res.orders;
-            qcData = res.qc || [];
-            
-            // Perbarui tampilan dashboard & tabel Anda
-            updateDashboard();
-            renderOrdersTable();
-            renderQCTable();
-        } else if (Array.isArray(res)) {
-            // Jika spreadsheet Anda mengembalikan array flat langsung
-            ordersData = res;
-            updateDashboard();
-            renderOrdersTable();
-        }
-    } catch (error) {
-        console.error("Gagal memuat data dari Spreadsheet:", error);
-        alert("Gagal memuat data database: " + error.message);
-    } finally {
-        showLoading(false);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-}
-  
+
+    const res = await response.json();
+    console.log("Data berhasil diterima dari GScript:", res); // Untuk cek di Console F12
+
+    // PENGAMAN 1: Pastikan data orders dan qc berbentuk Array
+    ordersData = res.orders || [];
+    qcData = res.qc || [];
+
+    // PENGAMAN 2: Konversi paksa data string angka dari spreadsheet menjadi tipe Number asli
+    ordersData = ordersData.map(o => {
+      // Jika format array 'bahan' di spreadsheet rusak/berupa string kosong, amankan menjadi array kosong
+      if (typeof o.bahan === 'string') {
+        try {
+          o.bahan = JSON.parse(o.bahan);
+        } catch (e) {
+          o.bahan = [];
+        }
+      } else if (!o.bahan) {
+        o.bahan = [];
+      }
+
+      return {
+        ...o,
+        qty: Number(o.qty) || 0,
+        cost: Number(o.cost) || 0,
+        progress: Number(o.progress) || 0,
+        selling: Number(o.selling) || 0,
+        totalBahan: Number(o.totalBahan) || 0,
+        biayaJasa: Number(o.biayaJasa) || 0,
+        hpp: Number(o.hpp) || 0,
+        returnQty: Number(o.returnQty) || 0
+      };
+    });
+
+    // Jalankan pembaruan UI utama
+    updateDashboard();
+    renderOrdersTable();
+    renderQCTable();
+
+  } catch (error) {
+    console.error("Gagal memproses load data dari Spreadsheet:", error);
+    alert("Gagal memuat database otomatis dari Google Sheets.\nError: " + error.message + "\n\nSistem akan beralih menggunakan data lokal sementara.");
+    
+    // Jika gagal, matikan loading agar user bisa tetap melihat dashboard kosong/lokal
+    showLoading(false);
+  } finally {
+    // Menjamin animasi loading pasti tertutup baik proses sukses maupun gagal
+    showLoading(false);
+  }
+}  
   // ─── KIRIM DATA / MODIFIKASI KE GOOGLE SHEET (POST) ───────────
 async function postData(action, payload) {
   showLoading(true);
