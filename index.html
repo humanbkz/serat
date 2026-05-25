@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Merch Textile ERP Enterprise</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    #sidebar { width: 18rem; transition: width 0.3s cubic-bezier(.4,0,.2,1), padding 0.3s cubic-bezier(.4,0,.2,1); overflow: hidden; flex-shrink: 0; }
+    #sidebar.collapsed { width: 4.5rem; padding-left: 0.75rem; padding-right: 0.75rem; }
+    #sidebar .sidebar-label { transition: opacity 0.2s ease, max-width 0.3s ease; white-space: nowrap; overflow: hidden; max-width: 200px; }
+    #sidebar.collapsed .sidebar-label { opacity: 0; max-width: 0; pointer-events: none; }
+    #sidebar .sidebar-brand { transition: opacity 0.2s ease, max-height 0.3s ease; overflow: hidden; max-height: 80px; }
+    #sidebar.collapsed .sidebar-brand { opacity: 0; max-height: 0; pointer-events: none; }
+    #sidebar .nav-btn { display: flex; align-items: center; gap: 0.75rem; }
+    #sidebar.collapsed .nav-btn { justify-content: center; padding-left: 0.5rem; padding-right: 0.5rem; }
+    #toggle-sidebar-btn svg { transition: transform 0.3s ease; }
+    #sidebar.collapsed #toggle-sidebar-btn svg { transform: rotate(180deg); }
+    .bahan-row { display: grid; grid-template-columns: 1fr 110px 80px 28px; gap: 6px; align-items: center; }
+  </style>
+</head>
+<body class="bg-slate-50 font-sans overflow-hidden text-slate-800">
+<div class="flex h-screen">
+
+  <aside id="sidebar" class="bg-slate-900 text-white p-6 overflow-y-auto flex flex-col shadow-2xl z-10">
+    <div class="flex justify-end mb-2">
+      <button id="toggle-sidebar-btn" onclick="toggleSidebar()" class="text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg p-1.5 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/></svg>
+      </button>
+    </div>
+    <div class="sidebar-brand mb-8">
+      <h1 class="text-2xl font-extrabold tracking-tight text-blue-400 leading-tight">MERCH <span class="text-white">ERP</span></h1>
+      <p class="text-slate-400 mt-1 text-xs sidebar-label">Divisi Serat &amp; Jahit</p>
+    </div>
+    <nav class="space-y-1 flex-1">
+      <button onclick="showSection('dashboard',this)" class="w-full text-left bg-slate-700 border-l-4 border-blue-500 p-3 rounded-xl transition nav-btn" title="Dashboard"><span class="text-lg flex-shrink-0">🏠</span><span class="sidebar-label">Dashboard</span></button>
+      <button onclick="showSection('orders',this)" class="w-full text-left hover:bg-slate-800 p-3 rounded-xl transition nav-btn" title="Orders"><span class="text-lg flex-shrink-0">📋</span><span class="sidebar-label">Orders Management</span></button>
+      <button onclick="showSection('production',this)" class="w-full text-left hover:bg-slate-800 p-3 rounded-xl transition nav-btn" title="Production"><span class="text-lg flex-shrink-0">⚙️</span><span class="sidebar-label">Production Control</span></button>
+      <button onclick="showSection('qc',this)" class="w-full text-left hover:bg-slate-800 p-3 rounded-xl transition nav-btn" title="QC"><span class="text-lg flex-shrink-0">🔍</span><span class="sidebar-label">Quality Control</span></button>
+      <button onclick="showSection('finance',this)" class="w-full text-left hover:bg-slate-800 p-3 rounded-xl transition nav-btn" title="Finance"><span class="text-lg flex-shrink-0">💰</span><span class="sidebar-label">Finance</span></button>
+      <button onclick="showSection('reports',this)" class="w-full text-left hover:bg-slate-800 p-3 rounded-xl transition nav-btn" title="Reports"><span class="text-lg flex-shrink-0">📊</span><span class="sidebar-label">Reports Export</span></button>
+    </nav>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto p-8 min-w-0">
+
+    <div id="loadingToast" class="fixed bottom-5 right-5 bg-blue-600 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 text-xs font-semibold z-50 transition-opacity duration-300">
+      <span class="animate-spin text-sm">⏳</span> Memproses sinkronisasi data Spreadsheet...
+    </div>
+
+    <section id="dashboard" class="section">
+      <div class="flex justify-between items-center mb-8">
+        <div><h2 class="text-3xl font-bold">Enterprise Dashboard</h2><p class="text-slate-500 mt-1">Sistem kontrol terintegrasi penjualan, produksi, dan retur</p></div>
+        <button onclick="openNewOrderModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-md font-medium">+ New Order</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-l-blue-500 border border-slate-100"><p class="text-slate-500 text-sm font-medium">Total Projects</p><h3 id="kpiOrders" class="text-4xl font-bold mt-2">0</h3></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-l-yellow-500 border border-slate-100"><p class="text-slate-500 text-sm font-medium">Active Production</p><h3 id="productionKPI" class="text-4xl font-bold mt-2">0</h3></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-l-red-500 border border-slate-100"><p class="text-slate-500 text-sm font-medium">Retur Logged</p><h3 id="returKPI" class="text-4xl font-bold mt-2">0</h3></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-l-green-500 border border-slate-100"><p class="text-slate-500 text-sm font-medium">Total Revenue</p><h3 id="revenueKPI" class="text-2xl font-bold mt-2 truncate">Rp 0</h3></div>
+      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 class="text-lg font-bold mb-4">Product Distribution</h3><div class="h-64 relative"><canvas id="categoryChart"></canvas></div></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 class="text-lg font-bold mb-4">Recent Production Queue</h3><div id="dashProdQueue" class="space-y-4 overflow-y-auto h-64 pr-2"></div></div>
+      </div>
+    </section>
+
+    <section id="orders" class="section hidden">
+      <div class="flex justify-between items-center mb-8">
+        <h2 class="text-3xl font-bold">Orders Management</h2>
+        <input type="text" id="searchOrders" onkeyup="renderOrders()" placeholder="Search company, ID..." class="border border-slate-200 rounded-xl px-4 py-2 w-72 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <tr>
+                <th class="p-4 font-semibold">Order ID</th>
+                <th class="p-4 font-semibold">Project / Client</th>
+                <th class="p-4 font-semibold">Product / Qty</th>
+                <th class="p-4 font-semibold w-32">Progress</th>
+                <th class="p-4 font-semibold">HPP (Bahan+Jasa)</th>
+                <th class="p-4 font-semibold">Grand Total</th>
+                <th class="p-4 font-semibold">Payment</th>
+                <th class="p-4 font-semibold">Status</th>
+                <th class="p-4 font-semibold">Retur</th>
+                <th class="p-4 font-semibold">Timeline</th>
+                <th class="p-4 font-semibold text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="production" class="section hidden">
+      <h2 class="text-3xl font-bold mb-8">Production Control</h2>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <h3 class="text-xl font-bold mb-6">Live Production Line</h3>
+        <div id="productionQueueList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </div>
+    </section>
+
+    <section id="qc" class="section hidden">
+      <div class="flex justify-between items-center mb-8"><h2 class="text-3xl font-bold">Quality Control Center</h2><button onclick="openQCModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-medium shadow-md">+ Add QC Log</button></div>
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 xl:col-span-2"><h3 class="text-xl font-bold mb-4">QC Logs</h3><div id="qcList" class="space-y-3"></div></div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 class="text-xl font-bold mb-4">SOP QC</h3>
+          <div class="text-xs text-slate-600 space-y-2 leading-relaxed">
+            <p class="font-semibold text-slate-800">Panduan Pengisian Form QC:</p>
+            <ol class="list-decimal list-inside space-y-1.5">
+              <li>Pilih ID Order aktif.</li><li>Periksa logo, kerapian jahit, dan kuantitas.</li><li>Centang checklist wajib.</li><li>Jika cacat, pilih FAIL dan deskripsikan.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="finance" class="section hidden">
+      <h2 class="text-3xl font-bold mb-8">Finance Management</h2>
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100"><p class="text-slate-500 text-xs font-medium">Outstanding Invoices</p><h3 id="financeUnpaid" class="text-2xl font-bold mt-1 text-red-500">Rp 0</h3></div>
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100"><p class="text-slate-500 text-xs font-medium">Dana Masuk (Paid)</p><h3 id="financePaid" class="text-2xl font-bold mt-1 text-green-500">Rp 0</h3></div>
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100"><p class="text-slate-500 text-xs font-medium">Est. Kerugian Retur</p><h3 id="financeRefunds" class="text-2xl font-bold mt-1 text-amber-600">Rp 0</h3></div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <h3 class="text-xl font-bold mb-4">Financial Breakdown per Project</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 border-b">
+              <tr>
+                <th class="p-3">Order ID</th><th class="p-3">Company</th>
+                <th class="p-3">HPP Total</th><th class="p-3">Nilai Proyek</th>
+                <th class="p-3">Margin</th><th class="p-3">Status Bayar</th>
+                <th class="p-3">Retur Loss Est.</th>
+              </tr>
+            </thead>
+            <tbody id="financeTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="reports" class="section hidden">
+      <h2 class="text-3xl font-bold mb-8">Reports Export Center</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-center">
+          <div class="bg-green-100 text-green-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">📊</div>
+          <h3 class="text-lg font-bold mb-2">Export Full Report (Multi-Sheet)</h3>
+          <p class="text-slate-500 text-xs mb-6">Sheet 1: Orders summary. Sheet 2: Rincian bahan per project. Sheet 3: Financial records.</p>
+          <button onclick="exportFullExcel()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-medium shadow-md">Export Enterprise Report (.xlsx)</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="orderModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl relative max-h-[95vh] overflow-y-auto">
+    <input type="hidden" id="editOrderIndex" value="">
+    <div class="flex justify-between items-center mb-5">
+      <h3 id="orderModalTitle" class="text-2xl font-bold">Input New Merchandise Order</h3>
+      <button onclick="closeOrderModal()" class="text-2xl hover:text-red-500">&times;</button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+      <div>
+        <label class="text-xs font-bold text-slate-500">Project / Client Name</label>
+        <input id="company" type="text" placeholder="Contoh: PT Astra International" class="w-full border rounded-xl p-2.5 bg-slate-50 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-300">
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-500">PIC Production</label>
+        <input id="pic" type="text" placeholder="Nama PIC" class="w-full border rounded-xl p-2.5 bg-slate-50 mt-1 focus:outline-none">
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-500">Product Type</label>
+        <select id="product" onchange="handleProductChange()" class="w-full border rounded-xl p-2.5 bg-slate-50 mt-1">
+          <option>Tote Bag</option><option>Goodie Bag</option><option>Pouch</option><option>Lanyard</option><option>Merch Kit</option>
+          <option value="__lainnya__">Lainnya...</option>
+        </select>
+        <input type="text" id="productCustom" placeholder="Ketik nama produk..." class="hidden w-full border border-blue-300 rounded-xl p-2.5 bg-white mt-2 text-xs focus:outline-none">
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-500">Quantity (pcs)</label>
+        <input id="qty" type="number" min="0" placeholder="0" oninput="recalcAll()" class="w-full border rounded-xl p-2.5 bg-slate-50 mt-1 focus:outline-none">
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-500">Deadline</label>
+        <input id="deadline" type="date" class="w-full border rounded-xl p-2.5 bg-slate-50 mt-1 focus:outline-none">
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-500">Selling Price / pcs (Rp)</label>
+        <input id="selling" type="number" min="0" placeholder="0" oninput="recalcAll()" class="w-full border rounded-xl p-2.5 bg-slate-50 mt-1 focus:outline-none">
+      </div>
+    </div>
+
+    <div class="border border-blue-100 rounded-xl p-4 bg-blue-50/40 mb-5">
+      <div class="flex justify-between items-center mb-3">
+        <label class="text-xs font-bold text-slate-700 uppercase tracking-wider">🧵 Daftar Bahan &amp; Biaya Produksi</label>
+        <button onclick="addBahanRow()" type="button" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Tambah Bahan</button>
+      </div>
+      <div class="bahan-row mb-1.5 px-1">
+        <span class="text-[10px] font-bold text-slate-400 uppercase">Nama Bahan</span>
+        <span class="text-[10px] font-bold text-slate-400 uppercase text-right">Harga/unit (Rp)</span>
+        <span class="text-[10px] font-bold text-slate-400 uppercase text-right">Qty</span>
+        <span></span>
+      </div>
+      <div id="bahanContainer" class="space-y-2"></div>
+      <div class="mt-4 pt-3 border-t border-blue-200 grid grid-cols-3 gap-2 text-xs">
+        <div class="bg-white rounded-lg p-2.5 border border-slate-100">
+          <p class="text-slate-400 font-medium mb-0.5">Total Biaya Bahan</p>
+          <p id="totalBahan" class="font-bold text-slate-700">Rp 0</p>
+        </div>
+        <div class="bg-orange-50 rounded-lg p-2.5 border border-orange-100">
+          <p class="text-orange-500 font-medium mb-0.5">Biaya Jasa (10%)</p>
+          <p id="biayaJasa" class="font-bold text-orange-600">Rp 0</p>
+        </div>
+        <div class="bg-blue-50 rounded-lg p-2.5 border border-blue-200">
+          <p class="text-blue-500 font-medium mb-0.5">HPP Total</p>
+          <p id="hppTotal" class="font-bold text-blue-700">Rp 0</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 mb-2">
+      <div class="bg-slate-100 rounded-xl p-3.5">
+        <p class="text-xs text-slate-500 font-medium">HPP / pcs (otomatis)</p>
+        <p id="hppPerPcs" class="text-lg font-bold text-slate-700 mt-1">Rp 0</p>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3.5">
+        <p class="text-xs text-blue-500 font-medium">Grand Total (+11% PPN)</p>
+        <p id="grandTotal" class="text-lg font-extrabold text-blue-700 mt-1">Rp 0</p>
+      </div>
+    </div>
+
+    <button id="orderSaveBtn" onclick="saveOrder()" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg">Save Order</button>
+  </div>
+</div>
+
+<div id="returnModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+    <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Log Retur Barang</h3><button onclick="toggleModal('returnModal')" class="text-2xl">&times;</button></div>
+    <input type="hidden" id="returnOrderIndex">
+    <div class="space-y-4">
+      <div><label class="text-xs font-bold text-slate-500">Jumlah Retur (pcs)</label><input id="modalReturnQty" type="number" class="w-full border rounded-xl p-3 bg-slate-50 mt-1 outline-none"></div>
+      <div><label class="text-xs font-bold text-slate-500">Alasan Pengembalian</label><textarea id="modalReturnReason" class="w-full border rounded-xl p-3 bg-slate-50 mt-1 h-24 outline-none" placeholder="Contoh: Logo miring / jahitan lepas"></textarea></div>
+    </div>
+    <button onclick="saveReturnLog()" class="mt-5 w-full bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-xl font-bold">Simpan &amp; Set Pending</button>
+  </div>
+</div>
+
+<div id="qcModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+    <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Input QC Log</h3><button onclick="toggleModal('qcModal')" class="text-2xl">&times;</button></div>
+    <div class="space-y-4">
+      <div>
+        <label class="text-xs font-bold text-slate-500">Pilih Order Aktif</label>
+        <select id="qcOrderSelect" onchange="handleQCOrderChange()" class="w-full border rounded-xl p-3 bg-slate-50 mt-1 outline-none font-medium text-sm"></select>
+      </div>
+      <div id="qcOrderDetails" class="text-xs bg-slate-100 p-3.5 rounded-xl hidden border border-slate-200 text-slate-600 space-y-1"></div>
+      <div class="border border-slate-200 rounded-xl p-3.5 bg-slate-50">
+        <label class="text-xs font-bold text-slate-700 block mb-2">Checklist Uji Kelayakan:</label>
+        <div class="space-y-2 text-xs">
+          <label class="flex items-center gap-2.5 cursor-pointer bg-white p-2 border border-slate-100 rounded-lg"><input type="checkbox" id="chkLogo" class="w-4 h-4 text-blue-600 rounded"><span>Logo Sesuai Brief</span></label>
+          <label class="flex items-center gap-2.5 cursor-pointer bg-white p-2 border border-slate-100 rounded-lg"><input type="checkbox" id="chkJahitan" class="w-4 h-4 text-blue-600 rounded"><span>Kerapian Jahitan</span></label>
+          <label class="flex items-center gap-2.5 cursor-pointer bg-white p-2 border border-slate-100 rounded-lg"><input type="checkbox" id="chkQty" class="w-4 h-4 text-blue-600 rounded"><span>Kesesuaian Kuantitas</span></label>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-500">Hasil QC</label>
+        <select id="qcResult" class="w-full border rounded-xl p-3 bg-slate-50 mt-1 outline-none font-bold text-sm"><option value="PASS">PASS (Lolos / Siap Kirim)</option><option value="FAIL">FAIL (Gagal / Balik Produksi)</option></select>
+      </div>
+      <div><label class="text-xs font-bold text-slate-500">Catatan</label><textarea id="qcNote" class="w-full border rounded-xl p-3 bg-slate-50 mt-1 h-20 outline-none text-sm" placeholder="Catatan temuan..."></textarea></div>
+    </div>
+    <button onclick="saveQCLog()" class="mt-5 w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold shadow-md">Simpan &amp; Perbarui Status</button>
+  </div>
+</div>
+
+<div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Full Order Detail</h3><button onclick="toggleModal('detailModal')" class="text-2xl">&times;</button></div>
+    <div id="detailContent" class="text-xs bg-slate-50 p-4 rounded-xl border border-slate-100"></div>
+    <button onclick="toggleModal('detailModal')" class="mt-5 w-full bg-slate-800 text-white py-2 rounded-xl font-medium">Close</button>
+  </div>
+</div>
+
+<script>
+// URL API Web App Google Apps Script Anda
+const URL_API = 'https://script.google.com/macros/s/AKfycbw0Nj-XgSpzmiTUy85XriRBEoswBdYNED24alYp0HV793AGWR8vTp35MRNA1MR7thBGMQ/exec';
+
+let ordersData = [];
+let qcData = [];
+let catChart;
+
+// Fungsi pembantu efek loading indicator
+function showLoading(visible) {
+  const toast = document.getElementById('loadingToast');
+  if (visible) toast.classList.remove('opacity-0', 'pointer-events-none');
+  else toast.classList.add('opacity-0', 'pointer-events-none');
+}
+
+// ─── AMBIL DATA UTAMA DARI GOOGLE SHEET (GET) ─────────────────
+async function fetchAllData() {
+  showLoading(true);
+  try {
+    const res = await fetch(URL_API);
+    const serverData = await res.json();
+    
+    ordersData = serverData.orders || [];
+    qcData = serverData.qc || [];
+    
+    // Cadangkan juga ke localStorage sebagai cache offline cepat
+    localStorage.setItem('ordersData', JSON.stringify(ordersData));
+    localStorage.setItem('qcData', JSON.stringify(qcData));
+  } catch (e) {
+    console.error("Gagal terhubung ke GSheet, menggunakan data local cache:", e);
+    ordersData = JSON.parse(localStorage.getItem('ordersData')) || [];
+    qcData = JSON.parse(localStorage.getItem('qcData')) || [];
+  }
+  showLoading(false);
+  renderOrders();
+  renderQC();
+}
+
+// ─── KIRIM DATA / MODIFIKASI KE GOOGLE SHEET (POST) ───────────
+async function postData(action, payload) {
+  showLoading(true);
+  try {
+    await fetch(URL_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, data: payload })
+    });
+  } catch (e) {
+    console.error("Gagal sinkronisasi data ke GSheet:", e);
+  }
+  showLoading(false);
+}
+
+function fmt(n) {
+  return new Intl.NumberFormat('id-ID', { style:'currency', currency:'IDR', minimumFractionDigits:0 }).format(n);
+}
+
+function getStatusColor(s) {
+  if(s==='Production') return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+  if(s==='QC') return 'bg-blue-50 text-blue-700 border-blue-200';
+  if(s==='Shipping') return 'bg-purple-50 text-purple-700 border-purple-200';
+  return 'bg-green-50 text-green-700 border-green-200';
+}
+
+function getReturnColor(s) {
+  if(s==='Pending') return 'bg-amber-50 text-amber-700 border-amber-200';
+  if(s==='Approved') return 'bg-green-50 text-green-700 border-green-200';
+  if(s==='Rejected') return 'bg-red-50 text-red-700 border-red-200';
+  return 'bg-slate-50 text-slate-400 border-slate-200';
+}
+
+// ─── BAHAN ROWS ───────────────────────────────────────────────
+function addBahanRow(nama='', harga='', qty='') {
+  const c = document.getElementById('bahanContainer');
+  const d = document.createElement('div');
+  d.className = 'bahan-row bg-white border border-slate-200 rounded-lg px-2 py-1.5';
+  d.innerHTML = `
+    <input type="text" placeholder="Nama bahan..." value="${nama}"
+      class="w-full border-0 bg-transparent text-xs focus:outline-none placeholder-slate-300 font-medium text-slate-700" oninput="recalcAll()">
+    <input type="number" placeholder="0" min="0" value="${harga}"
+      class="w-full border-0 bg-transparent text-xs focus:outline-none text-right placeholder-slate-300 font-medium" oninput="recalcAll()">
+    <input type="number" placeholder="1" min="0" value="${qty}"
+      class="w-full border-0 bg-transparent text-xs focus:outline-none text-right placeholder-slate-300 font-medium" oninput="recalcAll()">
+    <button onclick="removeBahanRow(this)" type="button" class="text-red-400 hover:text-red-600 font-bold text-base text-center leading-none">&times;</button>`;
+  c.appendChild(d);
+  recalcAll();
+}
+
+function removeBahanRow(btn) { btn.closest('.bahan-row').remove(); recalcAll(); }
+
+function getBahanData() {
+  const rows = document.querySelectorAll('#bahanContainer .bahan-row');
+  return Array.from(rows).map(r => {
+    const inp = r.querySelectorAll('input');
+    return { nama: inp[0].value.trim(), harga: Number(inp[1].value)||0, qty: Number(inp[2].value)||0 };
+  }).filter(b => b.nama || b.harga > 0);
+}
+
+function recalcAll() {
+  const bahan = getBahanData();
+  const totalBahan = bahan.reduce((s,b) => s + b.harga * b.qty, 0);
+  const jasa = Math.round(totalBahan * 0.1);
+  const hpp  = totalBahan + jasa;
+  const qty  = Number(document.getElementById('qty').value) || 0;
+  const sell = Number(document.getElementById('selling').value) || 0;
+  const gt   = Math.round(sell * qty * 1.11);
+  const hppPcs = qty > 0 ? Math.round(hpp / qty) : 0;
+
+  document.getElementById('totalBahan').innerText = fmt(totalBahan);
+  document.getElementById('biayaJasa').innerText  = fmt(jasa);
+  document.getElementById('hppTotal').innerText   = fmt(hpp);
+  document.getElementById('hppPerPcs').innerText  = fmt(hppPcs);
+  document.getElementById('grandTotal').innerText = fmt(gt);
+}
+
+function loadBahanToForm(arr) {
+  document.getElementById('bahanContainer').innerHTML = '';
+  if(arr && arr.length) arr.forEach(b => addBahanRow(b.nama, b.harga, b.qty));
+  else addBahanRow();
+}
+
+// ─── ORDER MODAL ──────────────────────────────────────────────
+function openNewOrderModal() {
+  document.getElementById('editOrderIndex').value = '';
+  document.getElementById('orderModalTitle').innerText = 'Input New Merchandise Order';
+  document.getElementById('orderSaveBtn').innerText = 'Save Order';
+  document.getElementById('orderSaveBtn').className = 'mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg';
+  ['company','qty','pic','selling','deadline'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('product').value = 'Tote Bag';
+  document.getElementById('productCustom').value = '';
+  document.getElementById('productCustom').classList.add('hidden');
+  loadBahanToForm([]);
+  recalcAll();
+  document.getElementById('orderModal').classList.remove('hidden');
+}
+
+function openEditOrderModal(idx) {
+  const o = ordersData[idx];
+  document.getElementById('editOrderIndex').value = idx;
+  document.getElementById('orderModalTitle').innerText = 'Edit Order — ' + o.id;
+  document.getElementById('orderSaveBtn').innerText = 'Update Order';
+  document.getElementById('orderSaveBtn').className = 'mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold shadow-lg';
+  document.getElementById('company').value = o.company;
+  document.getElementById('qty').value = o.qty;
+  document.getElementById('pic').value = o.pic;
+  document.getElementById('selling').value = o.selling || 0;
+  document.getElementById('deadline').value = o.deadline !== '-' ? o.deadline : '';
+  if(['Tote Bag','Goodie Bag','Pouch','Lanyard','Merch Kit'].includes(o.product)) {
+    document.getElementById('product').value = o.product;
+    document.getElementById('productCustom').classList.add('hidden');
+  } else {
+    document.getElementById('product').value = '__lainnya__';
+    document.getElementById('productCustom').value = o.product;
+    document.getElementById('productCustom').classList.remove('hidden');
+  }
+  loadBahanToForm(o.bahan || []);
+  recalcAll();
+  document.getElementById('orderModal').classList.remove('hidden');
+}
+
+function closeOrderModal() { document.getElementById('orderModal').classList.add('hidden'); }
+function handleProductChange() {
+  const c = document.getElementById('productCustom');
+  if(document.getElementById('product').value === '__lainnya__') { c.classList.remove('hidden'); c.focus(); }
+  else { c.classList.add('hidden'); c.value = ''; }
+}
+function getFormProduct() {
+  return document.getElementById('product').value === '__lainnya__'
+    ? document.getElementById('productCustom').value.trim() || 'Produk Lainnya'
+    : document.getElementById('product').value;
+}
+
+async function saveOrder() {
+  const editIdx = document.getElementById('editOrderIndex').value;
+  const isEdit  = editIdx !== '';
+  const product = getFormProduct();
+  const company = document.getElementById('company').value || 'Corp';
+  const qty     = Number(document.getElementById('qty').value) || 0;
+  const pic     = document.getElementById('pic').value || '-';
+  const selling = Number(document.getElementById('selling').value) || 0;
+  const deadline= document.getElementById('deadline').value || '-';
+  const bahan   = getBahanData();
+  const totalBahan = bahan.reduce((s,b) => s + b.harga * b.qty, 0);
+  const biayaJasa  = Math.round(totalBahan * 0.1);
+  const hpp        = totalBahan + biayaJasa;
+  const cost       = Math.round(selling * qty * 1.11);
+
+  if(isEdit) {
+    const o = ordersData[editIdx];
+    Object.assign(o, { company, product, qty, pic, bahan, totalBahan, biayaJasa, hpp, selling, cost, deadline });
+    await postData('updateOrder', o);
+  } else {
+    const today = new Date().toISOString().slice(0,10);
+    const order = { id:'ORD-'+Math.floor(Math.random()*99999), company, product, qty, pic, bahan, totalBahan, biayaJasa, hpp, selling, cost, deadline, progress:0, status:'Production', payment:'Unpaid', dateOrder:today, dateProdStart:today, dateQC:'', dateShipping:'', datePaid:'', returnQty:0, returnReason:'', returnStatus:'None' };
+    ordersData.unshift(order);
+    await postData('createOrder', order);
+  }
+  
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  renderOrders(); closeOrderModal();
+}
+
+// ─── RENDER FUNCTIONS ─────────────────────────────────────────
+function renderOrders() {
+  const tbody = document.getElementById('ordersTbody');
+  const q = document.getElementById('searchOrders').value.toLowerCase();
+  tbody.innerHTML = '';
+  ordersData.forEach((o, idx) => {
+    if(!o.id.toLowerCase().includes(q) && !o.company.toLowerCase().includes(q)) return;
+    const hpp = o.hpp || 0;
+    const hppPcs = o.qty > 0 ? Math.round(hpp / o.qty) : 0;
+    tbody.innerHTML += `
+      <tr class="hover:bg-slate-50">
+        <td class="p-4 font-bold text-slate-700">${o.id}</td>
+        <td class="p-4"><div class="font-semibold">${o.company}</div><div class="text-[10px] text-slate-400">${o.product}</div></td>
+        <td class="p-4"><div class="font-medium">${o.qty} pcs</div><div class="text-[10px] text-slate-400">${(o.bahan||[]).length} bahan</div></td>
+        <td class="p-4"><div class="flex items-center gap-2"><input type="range" value="${o.progress}" min="0" max="100" onchange="updateProgress(${idx},this.value)" class="w-16 accent-blue-600"><span class="font-bold text-[11px]">${o.progress}%</span></div></td>
+        <td class="p-4"><div class="font-semibold text-slate-700">${fmt(hpp)}</div><div class="text-[10px] text-slate-400">${fmt(hppPcs)}/pcs</div></td>
+        <td class="p-4 font-semibold text-blue-700">${fmt(o.cost)}</td>
+        <td class="p-4"><select onchange="updatePayment(${idx},this.value)" class="text-[10px] border rounded px-1.5 py-0.5 font-bold ${o.payment==='Paid'?'bg-green-50 text-green-700':'bg-red-50 text-red-700'}"><option ${o.payment==='Paid'?'selected':''}>Paid</option><option ${o.payment==='Unpaid'?'selected':''}>Unpaid</option></select></td>
+        <td class="p-4"><select onchange="updateStatus(${idx},this.value)" class="text-[10px] font-bold rounded-lg px-2 py-1 border outline-none ${getStatusColor(o.status)}"><option ${o.status==='Production'?'selected':''}>Production</option><option ${o.status==='QC'?'selected':''}>QC</option><option ${o.status==='Shipping'?'selected':''}>Shipping</option><option ${o.status==='Completed'?'selected':''}>Completed</option></select></td>
+        <td class="p-4">
+          <div class="flex flex-col gap-1 w-24">
+            <select onchange="updateReturnStatus(${idx},this.value)" class="text-[10px] border font-bold rounded px-1.5 py-0.5 outline-none ${getReturnColor(o.returnStatus)}"><option ${o.returnStatus==='None'?'selected':''}>None</option><option ${o.returnStatus==='Pending'?'selected':''}>Pending</option><option ${o.returnStatus==='Approved'?'selected':''}>Approved</option><option ${o.returnStatus==='Rejected'?'selected':''}>Rejected</option></select>
+            ${o.returnQty>0?`<span class="text-[9px] text-red-600 font-medium">${o.returnQty} pcs</span>`:''}
+          </div>
+        </td>
+        <td class="p-4">
+          <div class="space-y-1 text-[9px] text-slate-500 w-28">
+            <div class="flex justify-between"><span class="text-slate-400 font-semibold">Order:</span><span>${o.dateOrder||'-'}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400 font-semibold">Prod:</span><span>${o.dateProdStart||'-'}</span></div>
+            <div class="flex justify-between"><span class="${o.dateQC?'text-blue-500':'text-slate-300'} font-semibold">QC:</span><span>${o.dateQC||'-'}</span></div>
+            <div class="flex justify-between"><span class="${o.dateShipping?'text-purple-500':'text-slate-300'} font-semibold">Ship:</span><span>${o.dateShipping||'-'}</span></div>
+            <div class="flex justify-between"><span class="${o.datePaid?'text-green-500':'text-slate-300'} font-semibold">Paid:</span><span>${o.datePaid||'-'}</span></div>
+          </div>
+        </td>
+        <td class="p-4">
+          <div class="flex flex-col gap-1 items-center">
+            <div class="flex gap-1">
+              <button onclick="openEditOrderModal(${idx})" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold">Edit</button>
+              <button onclick="viewDetail(${idx})" class="bg-slate-100 hover:bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-bold">Detail</button>
+            </div>
+            <div class="flex gap-1">
+              <button onclick="openReturnModal(${idx})" class="bg-amber-50 hover:bg-amber-100 text-amber-700 px-2 py-1 rounded text-[10px] font-bold">Retur</button>
+              <button onclick="deleteOrder(${idx})" class="text-red-500 hover:bg-red-50 px-1.5 py-1 rounded text-[10px]">&times;</button>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+  });
+  renderDashboard(); renderProductionQueue(); renderFinance();
+}
+
+function viewDetail(idx) {
+  const o = ordersData[idx];
+  const hpp = o.hpp || 0;
+  const hppPcs = o.qty > 0 ? Math.round(hpp / o.qty) : 0;
+  const margin = o.cost - hpp;
+  const bahanHtml = (o.bahan && o.bahan.length)
+    ? o.bahan.map(b => `<div class="flex justify-between items-center bg-white border border-slate-100 rounded-lg px-3 py-1.5 mb-1"><span class="font-medium">${b.nama||'-'}</span><span class="text-slate-500">${fmt(b.harga)} × ${b.qty} = <strong class="text-slate-700">${fmt(b.harga*b.qty)}</strong></span></div>`).join('')
+    : '<p class="text-slate-400">Tidak ada data bahan.</p>';
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="grid grid-cols-2 gap-y-1.5 mb-3">
+      <div class="font-bold">ID / Klien:</div><div>${o.id} / ${o.company}</div>
+      <div class="font-bold">Produk:</div><div>${o.product}</div>
+      <div class="font-bold">Qty:</div><div>${o.qty} pcs</div>
+      <div class="font-bold">PIC:</div><div>${o.pic}</div>
+      <div class="font-bold">Deadline:</div><div>${o.deadline}</div>
+    </div>
+    <div class="mb-3">
+      <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">🧵 Rincian Bahan</p>
+      ${bahanHtml}
+    </div>
+    <div class="grid grid-cols-2 gap-y-1.5 mb-3 border-t border-slate-200 pt-3">
+      <div class="font-bold text-slate-500">Total Biaya Bahan:</div><div>${fmt(o.totalBahan||0)}</div>
+      <div class="font-bold text-orange-500">Biaya Jasa (10%):</div><div>${fmt(o.biayaJasa||0)}</div>
+      <div class="font-bold text-blue-600">HPP Total:</div><div class="font-bold">${fmt(hpp)}</div>
+      <div class="font-bold text-blue-600">HPP / pcs:</div><div>${fmt(hppPcs)}</div>
+      <hr class="col-span-2 my-1 border-slate-200">
+      <div class="font-bold">Selling / pcs:</div><div>${fmt(o.selling||0)}</div>
+      <div class="font-bold">Grand Total (+PPN):</div><div class="text-blue-700 font-extrabold">${fmt(o.cost)}</div>
+      <div class="font-bold text-green-600">Margin Est.:</div><div class="font-bold ${margin>=0?'text-green-700':'text-red-600'}">${fmt(margin)}</div>
+    </div>
+    <div class="grid grid-cols-2 gap-y-1.5 border-t border-slate-200 pt-3">
+      <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider col-span-2 mb-1">📅 Timeline</div>
+      <div class="font-bold">Tgl Order:</div><div>${o.dateOrder||'-'}</div>
+      <div class="font-bold">Prod Mulai:</div><div>${o.dateProdStart||'-'}</div>
+      <div class="font-bold text-blue-600">QC Selesai:</div><div>${o.dateQC||'-'}</div>
+      <div class="font-bold text-purple-600">Tgl Kirim:</div><div>${o.dateShipping||'-'}</div>
+      <div class="font-bold text-green-600">Tgl Bayar:</div><div>${o.datePaid||'-'}</div>
+      <hr class="col-span-2 my-1 border-slate-200">
+      <div class="font-bold">Retur Qty:</div><div class="text-red-500 font-bold">${o.returnQty} pcs</div>
+      <div class="font-bold">Alasan:</div><div>${o.returnReason||'-'}</div>
+      <div class="font-bold">Status Retur:</div><div class="font-bold text-amber-600">${o.returnStatus}</div>
+    </div>`;
+  toggleModal('detailModal');
+}
+
+function renderDashboard() {
+  const totalRev = ordersData.reduce((s,o) => s+Number(o.cost), 0);
+  const active   = ordersData.filter(o => o.status==='Production').length;
+  const returns  = ordersData.filter(o => o.returnStatus==='Pending'||o.returnStatus==='Approved').length;
+  document.getElementById('kpiOrders').innerText    = ordersData.length;
+  document.getElementById('productionKPI').innerText= active;
+  document.getElementById('returKPI').innerText     = returns;
+  document.getElementById('revenueKPI').innerText   = fmt(totalRev);
+  const dq = document.getElementById('dashProdQueue'); dq.innerHTML = '';
+  const prod = ordersData.filter(o => o.status==='Production');
+  if(!prod.length) { dq.innerHTML='<p class="text-xs text-slate-400">No active production</p>'; }
+  prod.forEach(o => { dq.innerHTML += `<div><div class="flex justify-between text-xs mb-1"><span>${o.id} — ${o.company}</span><span class="font-bold">${o.progress}%</span></div><div class="w-full bg-slate-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${o.progress}%"></div></div></div>`; });
+  updateChart();
+}
+
+function renderProductionQueue() {
+  const c = document.getElementById('productionQueueList'); c.innerHTML='';
+  const prod = ordersData.filter(o => o.status==='Production');
+  if(!prod.length) { c.innerHTML='<p class="text-sm text-slate-400 col-span-full">Antrean produksi kosong.</p>'; return; }
+  prod.forEach(o => {
+    c.innerHTML += `<div class="border border-slate-200 rounded-xl p-5 bg-slate-50 flex flex-col gap-2 shadow-sm">
+      <div class="flex justify-between items-center"><span class="font-bold text-sm">${o.company}</span><span class="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">${o.progress}%</span></div>
+      <div class="text-xs text-slate-500">${o.product} · ${o.qty} pcs</div>
+      <div class="w-full bg-slate-200 h-2.5 rounded-full"><div class="bg-blue-500 h-2.5 rounded-full" style="width:${o.progress}%"></div></div>
+      <div class="text-[11px] text-slate-500">HPP: <span class="font-bold text-slate-700">${fmt(o.hpp||0)}</span></div>
+      <div class="flex justify-between text-[11px] text-slate-400"><span>${(o.bahan||[]).length} bahan</span><span>PIC: ${o.pic}</span></div>
+    </div>`;
+  });
+}
+
+function renderFinance() {
+  const tbody = document.getElementById('financeTbody'); tbody.innerHTML='';
+  let paid=0, unpaid=0, loss=0;
+  ordersData.forEach(o => {
+    const cost = Number(o.cost), hpp = Number(o.hpp)||0, margin = cost-hpp;
+    const lossEst = o.returnStatus==='Approved' ? Math.round((cost/(Number(o.qty)||1))*Number(o.returnQty)) : 0;
+    if(o.payment==='Paid') paid+=cost; else unpaid+=cost; loss+=lossEst;
+    tbody.innerHTML += `<tr class="border-b hover:bg-slate-50">
+      <td class="p-3 font-semibold">${o.id}</td>
+      <td class="p-3">${o.company}</td>
+      <td class="p-3 text-slate-600">${fmt(hpp)}</td>
+      <td class="p-3 text-blue-700 font-medium">${fmt(cost)}</td>
+      <td class="p-3 font-bold ${margin>=0?'text-green-600':'text-red-600'}">${fmt(margin)}</td>
+      <td class="p-3"><span class="text-[10px] font-bold ${o.payment==='Paid'?'text-green-600':'text-red-600'}">${o.payment}</span></td>
+      <td class="p-3 text-red-500">${lossEst>0?fmt(lossEst):'-'}</td>
+    </tr>`;
+  });
+  document.getElementById('financePaid').innerText    = fmt(paid);
+  document.getElementById('financeUnpaid').innerText  = fmt(unpaid);
+  document.getElementById('financeRefunds').innerText = fmt(loss);
+}
+
+function renderQC() {
+  const c = document.getElementById('qcList'); c.innerHTML='';
+  qcData.forEach((item,idx) => {
+    c.innerHTML += `<div class="border rounded-xl p-3 bg-slate-50 flex justify-between items-center text-xs"><div><p class="font-bold">${item.order} <span class="ml-2 px-2 py-0.5 rounded text-[10px] ${item.result==='PASS'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${item.result}</span></p><p class="text-slate-500 mt-1">${item.note}</p></div><button onclick="deleteQC(${idx})" class="text-red-400 hover:text-red-600">Delete</button></div>`;
+  });
+}
+
+// ─── ACTIONS & UPDATES (SINKRON KE GSHEET) ───────────────────
+async function updateProgress(idx,v) { 
+  ordersData[idx].progress=Number(v); 
+  if(Number(v)===100&&ordersData[idx].status==='Production') ordersData[idx].status='QC'; 
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  renderOrders(); 
+  await postData('updateOrder', ordersData[idx]);
+}
+
+async function updatePayment(idx,v) { 
+  const today=new Date().toISOString().slice(0,10); 
+  ordersData[idx].payment=v; 
+  if(v==='Paid'&&!ordersData[idx].datePaid) ordersData[idx].datePaid=today; 
+  if(v==='Unpaid') ordersData[idx].datePaid=''; 
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  renderOrders(); 
+  await postData('updateOrder', ordersData[idx]);
+}
+
+async function updateReturnStatus(idx,v) { 
+  ordersData[idx].returnStatus=v; 
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  renderOrders(); 
+  await postData('updateOrder', ordersData[idx]);
+}
+
+async function updateStatus(idx,v) { 
+  const today=new Date().toISOString().slice(0,10); 
+  const o=ordersData[idx]; 
+  o.status=v; 
+  if(v==='Completed') o.progress=100; 
+  if(v==='QC'&&!o.dateQC) o.dateQC=today; 
+  if(v==='Shipping'&&!o.dateShipping) o.dateShipping=today; 
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  renderOrders(); 
+  await postData('updateOrder', o);
+}
+
+async function deleteOrder(idx) { 
+  if(confirm('Hapus order ini?')) { 
+    const orderId = ordersData[idx].id;
+    ordersData.splice(idx,1); 
+    localStorage.setItem('ordersData', JSON.stringify(ordersData));
+    renderOrders(); 
+    await postData('deleteOrder', { id: orderId });
+  } 
+}
+
+// ─── QC & RETURN HANDLERS ────────────────────────────────────
+function openQCModal() {
+  const sel = document.getElementById('qcOrderSelect');
+  sel.innerHTML = '<option value="">-- Pilih Order --</option>';
+  ordersData.forEach((o,i) => { sel.innerHTML += `<option value="${i}">${o.id} [${o.company}]</option>`; });
+  document.getElementById('qcOrderDetails').classList.add('hidden');
+  ['qcNote'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('qcResult').value='PASS';
+  ['chkLogo','chkJahitan','chkQty'].forEach(id => document.getElementById(id).checked=false);
+  toggleModal('qcModal');
+}
+
+function handleQCOrderChange() {
+  const idx = document.getElementById('qcOrderSelect').value;
+  const d   = document.getElementById('qcOrderDetails');
+  if(!idx) { d.classList.add('hidden'); return; }
+  const o = ordersData[idx];
+  d.innerHTML = `<p class="font-semibold mb-1">📦 Ringkasan:</p><div><strong>Klien:</strong> ${o.company}</div><div><strong>Item:</strong> ${o.product} · ${o.qty} pcs</div><div><strong>HPP:</strong> ${fmt(o.hpp||0)}</div>`;
+  d.classList.remove('hidden');
+}
+
+async function saveQCLog() {
+  const idx = document.getElementById('qcOrderSelect').value;
+  if(!idx) { alert('Pilih ID order!'); return; }
+  const o = ordersData[idx], result = document.getElementById('qcResult').value;
+  const note = document.getElementById('qcNote').value || 'Pemeriksaan selesai.';
+  const chk = `[${document.getElementById('chkLogo').checked?'✓ Logo':'✗ Logo'}, ${document.getElementById('chkJahitan').checked?'✓ Jahit':'✗ Jahit'}, ${document.getElementById('chkQty').checked?'✓ Qty':'✗ Qty'}]`;
+  
+  const newQC = { order:o.id, result: result, note:`[${o.product}] ${chk} - ${note}` };
+  qcData.unshift(newQC);
+  
+  const today = new Date().toISOString().slice(0,10);
+  if(result==='PASS') { o.status='Shipping'; o.progress=100; if(!o.dateQC) o.dateQC=today; if(!o.dateShipping) o.dateShipping=today; }
+  else { o.status='Production'; o.progress=50; o.dateQC=today; o.dateShipping=''; }
+  
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  localStorage.setItem('qcData', JSON.stringify(qcData));
+  renderOrders(); renderQC(); toggleModal('qcModal');
+  
+  await postData('createQC', { order: o, qc: newQC });
+}
+
+async function deleteQC(idx) { 
+  const qcItem = qcData[idx];
+  qcData.splice(idx,1); 
+  localStorage.setItem('qcData', JSON.stringify(qcData));
+  renderQC(); 
+  await postData('deleteQC', qcItem);
+}
+
+function openReturnModal(idx) {
+  document.getElementById('returnOrderIndex').value = idx;
+  document.getElementById('modalReturnQty').value   = ordersData[idx].returnQty||0;
+  document.getElementById('modalReturnReason').value= ordersData[idx].returnReason||'';
+  toggleModal('returnModal');
+}
+
+async function saveReturnLog() {
+  const idx = document.getElementById('returnOrderIndex').value;
+  ordersData[idx].returnQty    = Number(document.getElementById('modalReturnQty').value)||0;
+  ordersData[idx].returnReason = document.getElementById('modalReturnReason').value||'-';
+  ordersData[idx].returnStatus = 'Pending';
+  
+  localStorage.setItem('ordersData', JSON.stringify(ordersData));
+  renderOrders(); toggleModal('returnModal');
+  
+  await postData('updateOrder', ordersData[idx]);
+}
+
+// ─── WINDOW HELPERS ───────────────────────────────────────────
+function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'); }
+function toggleSidebar() { const s=document.getElementById('sidebar'); s.classList.toggle('collapsed'); localStorage.setItem('sidebarCollapsed',s.classList.contains('collapsed')); }
+function showSection(id,el) { document.querySelectorAll('.section').forEach(s=>s.classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('bg-slate-700','border-l-4','border-blue-500')); el.classList.add('bg-slate-700','border-l-4','border-blue-500'); }
+
+function updateChart() {
+  const cats={};
+  ordersData.forEach(o => { cats[o.product]=(cats[o.product]||0)+1; });
+  const ctx=document.getElementById('categoryChart').getContext('2d');
+  if(catChart) catChart.destroy();
+  catChart=new Chart(ctx, { type:'doughnut', data:{ labels:Object.keys(cats), datasets:[{ data:Object.values(cats), backgroundColor:['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ef4444'], borderWidth:0 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ boxWidth:12 } } } } });
+}
+
+// ─── EXCEL EXPORT ─────────────────────────────────────────────
+function xlW(ws,ws2) { ws['!cols']=ws2.map(w=>({wch:w})); }
+
+function exportFullExcel() {
+  const wb  = XLSX.utils.book_new();
+  const exp = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+
+  const m1=[["MERCH ERP — ORDERS REPORT"],[`Export: ${exp}`],[],
+    ["ID","Klien","Produk","Qty","HPP Total","HPP/pcs","Selling/pcs","Grand Total+PPN","Progress","Status","Payment","PIC","Deadline","Tgl Order","Tgl Prod","Tgl QC","Tgl Kirim","Tgl Bayar","Retur Qty","Alasan Retur","Status Retur"]];
+  ordersData.forEach(o => {
+    const hpp=o.hpp||0, hppPcs=o.qty>0?Math.round(hpp/o.qty):0;
+    m1.push([o.id,o.company,o.product,Number(o.qty),Number(hpp),Number(hppPcs),Number(o.selling||0),Number(o.cost),Number(o.progress),o.status,o.payment,o.pic,o.deadline,o.dateOrder||'-',o.dateProdStart||'-',o.dateQC||'-',o.dateShipping||'-',o.datePaid||'-',Number(o.returnQty),o.returnReason||'-',o.returnStatus]);
+  });
+  const ws1=XLSX.utils.aoa_to_sheet(m1); xlW(ws1,[14,25,16,10,18,14,16,22,10,16,12,12,12,12,12,12,12,12,10,28,14]);
+  XLSX.utils.book_append_sheet(wb,ws1,"📋 Orders");
+
+  const m2=[["MERCH ERP — RINCIAN BAHAN PER PROJECT"],[`Export: ${exp}`],[],
+    ["ID Order","Klien","Produk","Nama Bahan","Harga/unit (Rp)","Qty Bahan","Subtotal (Rp)"]];
+  ordersData.forEach(o => {
+    (o.bahan||[]).forEach((b,i) => {
+      m2.push([i===0?o.id:'',i===0?o.company:'',i===0?o.product:'',b.nama||'-',Number(b.harga||0),Number(b.qty||0),Number((b.harga||0)*(b.qty||0))]);
+    });
+    m2.push(['','','','— Total Bahan —','','',Number(o.totalBahan||0)]);
+    m2.push(['','','','— Biaya Jasa 10% —','','',Number(o.biayaJasa||0)]);
+    m2.push(['','','','▶ HPP Total','','',Number(o.hpp||0)]);
+    m2.push([]);
+  });
+  const ws2=XLSX.utils.aoa_to_sheet(m2); xlW(ws2,[14,25,16,28,18,10,20]);
+  XLSX.utils.book_append_sheet(wb,ws2,"🧵 Bahan");
+
+  let sp=0,su=0,sl=0;
+  const m3=[["MERCH ERP — FINANCIAL RECORDS"],[`Export: ${exp}`],[],
+    ["ID","Klien","HPP Total","Nilai Proyek","Margin","Status Bayar","Retur Loss Est.","Status Retur","Tgl Bayar"]];
+  ordersData.forEach(o => {
+    const cost=Number(o.cost),hpp=Number(o.hpp)||0,margin=cost-hpp;
+    const loss=o.returnStatus==='Approved'?Math.round((cost/(Number(o.qty)||1))*Number(o.returnQty)):0;
+    if(o.payment==='Paid') sp+=cost; else su+=cost; sl+=loss;
+    m3.push([o.id,o.company,hpp,cost,margin,o.payment,loss,o.returnStatus,o.datePaid||'-']);
+  });
+  m3.push([],["TOTAL","",ordersData.reduce((s,o)=>s+Number(o.hpp||0),0),sp+su,(sp+su)-ordersData.reduce((s,o)=>s+Number(o.hpp||0),0),`Paid:${sp.toLocaleString('id')}|Unpaid:${su.toLocaleString('id')}`,sl,"",""]);
+  const ws3=XLSX.utils.aoa_to_sheet(m3); xlW(ws3,[14,25,18,20,16,14,20,14,14]);
+  XLSX.utils.book_append_sheet(wb,ws3,"💰 Finance");
+
+  XLSX.writeFile(wb,`ERP_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+window.onload = function() {
+  if(localStorage.getItem('sidebarCollapsed')==='true') document.getElementById('sidebar').classList.add('collapsed');
+  
+  // Ambil data real-time langsung dari database Spreadsheet
+  fetchAllData();
+};
+</script>
+</body>
+</html>
