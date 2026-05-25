@@ -293,7 +293,7 @@
 </div>
 
 <script>
-const URL_API = 'https://script.google.com/macros/s/AKfycbyczFzUKaMZpTM4941y37kPJH7gHzfBBPztFa_P7JZmg88XOJD6Gm0R5wscJn_dr0pQew/exec';
+const URL_API = 'https://script.google.com/macros/s/AKfycbw0Nj-XgSpzmiTUy85XriRBEoswBdYNED24alYp0HV793AGWR8vTp35MRNA1MR7thBGMQ/exec';
 
 let ordersData = [];
 let qcData = [];
@@ -312,7 +312,7 @@ async function fetchAllData() {
   try {
     const response = await fetch(URL_API, {
       method: 'GET',
-      redirect: 'follow'
+      // Menggunakan default 'cors' agar sinkronisasi redirect berjalan mulus di browser
     });
 
     if (!response.ok) {
@@ -326,18 +326,23 @@ async function fetchAllData() {
     qcData = res.qc || [];
 
     ordersData = ordersData.map(o => {
-      if (typeof o.bahan === 'string') {
+      let parsedBahan = [];
+      // PENYEMPURNAAN: Deteksi tipe data respons secara fleksibel
+      if (typeof o.bahan === 'string' && o.bahan.trim() !== '') {
         try {
-          o.bahan = JSON.parse(o.bahan);
+          parsedBahan = JSON.parse(o.bahan);
         } catch (e) {
-          o.bahan = [];
+          parsedBahan = [];
         }
-      } else if (!o.bahan) {
-        o.bahan = [];
+      } else if (Array.isArray(o.bahan)) {
+        parsedBahan = o.bahan;
       }
 
       return {
         ...o,
+        id: o.id ? o.id.toString() : 'ORD-UNKNOWN',
+        company: o.company ? o.company.toString() : '-',
+        product: o.product ? o.product.toString() : '-',
         qty: Number(o.qty) || 0,
         cost: Number(o.cost) || 0,
         progress: Number(o.progress) || 0,
@@ -345,7 +350,8 @@ async function fetchAllData() {
         totalBahan: Number(o.totalBahan) || 0,
         biayaJasa: Number(o.biayaJasa) || 0,
         hpp: Number(o.hpp) || 0,
-        returnQty: Number(o.returnQty) || 0
+        returnQty: Number(o.returnQty) || 0,
+        bahan: parsedBahan
       };
     });
 
@@ -364,15 +370,20 @@ async function fetchAllData() {
 async function postData(action, payload) {
   showLoading(true);
   try {
-    await fetch(URL_API, {
+    const response = await fetch(URL_API, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: action, data: payload })
     });
+    const resText = await response.text();
+    console.log("Respon POST:", resText);
+    // Jalankan load data ulang setelah perubahan sukses disimpan di awan
+    await fetchAllData();
   } catch (e) {
     console.error("Gagal sinkronisasi data ke GSheet:", e);
+  } finally {
+    showLoading(false);
   }
-  showLoading(false);
 }
 
 function fmt(n) {
@@ -475,7 +486,7 @@ function openEditOrderModal(idx) {
   document.getElementById('qty').value = o.qty;
   document.getElementById('pic').value = o.pic;
   document.getElementById('selling').value = o.selling || 0;
-  document.getElementById('deadline').value = o.deadline !== '-' ? o.deadline : '';
+  document.getElementById('deadline').value = o.deadline && o.deadline !== '-' ? o.deadline : '';
   if(['Tote Bag','Goodie Bag','Pouch','Lanyard','Merch Kit'].includes(o.product)) {
     document.getElementById('product').value = o.product;
     document.getElementById('productCustom').classList.add('hidden');
@@ -520,15 +531,14 @@ async function saveOrder() {
   if(isEdit) {
     const o = ordersData[editIdx];
     Object.assign(o, { company, product, qty, pic, bahan, totalBahan, biayaJasa, hpp, selling, cost, deadline });
+    closeOrderModal();
     await postData('updateOrder', o);
   } else {
     const today = new Date().toISOString().slice(0,10);
     const order = { id:'ORD-'+Math.floor(Math.random()*99999), company, product, qty, pic, bahan, totalBahan, biayaJasa, hpp, selling, cost, deadline, progress:0, status:'Production', payment:'Unpaid', dateOrder:today, dateProdStart:today, dateQC:'', dateShipping:'', datePaid:'', returnQty:0, returnReason:'', returnStatus:'None' };
-    ordersData.unshift(order);
+    closeOrderModal();
     await postData('createOrder', order);
   }
-  
-  renderOrdersTable(); closeOrderModal();
 }
 
 // ─── RENDER FUNCTIONS ─────────────────────────────────────────
@@ -537,6 +547,12 @@ function renderOrdersTable() {
   if(!tbody) return;
   const q = document.getElementById('searchOrders') ? document.getElementById('searchOrders').value.toLowerCase() : '';
   tbody.innerHTML = '';
+  
+  if (!ordersData || ordersData.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="11" class="p-8 text-center text-slate-400 font-medium">Belum ada data order ter-load.</td></tr>`;
+    return;
+  }
+
   ordersData.forEach((o, idx) => {
     if(q && !o.id.toLowerCase().includes(q) && !o.company.toLowerCase().includes(q)) return;
     const hpp = o.hpp || 0;
@@ -580,7 +596,7 @@ function renderOrdersTable() {
         </td>
       </tr>`;
   });
-  updateDashboard(); renderProductionQueue(); renderFinance();
+  renderProductionQueue(); renderFinance();
 }
 
 function renderOrders() {
@@ -638,7 +654,6 @@ function updateDashboard() {
 
   let totalRevenue = 0;
   let totalHPP = 0;
-  let totalMargin = 0;
   let activeOrders = 0;
   let returns = ordersData.filter(o => o.returnStatus === 'Pending' || o.returnStatus === 'Approved').length;
 
@@ -650,7 +665,6 @@ function updateDashboard() {
     
     totalRevenue += cost;
     totalHPP += hpp;
-    totalMargin += (cost - hpp);
 
     if (o.status && o.status === 'Production') {
       activeOrders++;
@@ -670,8 +684,11 @@ function updateDashboard() {
   if(dq) {
     dq.innerHTML = '';
     const prod = ordersData.filter(o => o.status === 'Production');
-    if(!prod.length) { dq.innerHTML = '<p class="text-xs text-slate-400">No active production</p>'; }
-    prod.forEach(o => { dq.innerHTML += `<div><div class="flex justify-between text-xs mb-1"><span>${o.id} — ${o.company}</span><span class="font-bold">${o.progress}%</span></div><div class="w-full bg-slate-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${o.progress}%"></div></div></div>`; });
+    if(!prod.length) { 
+      dq.innerHTML = '<p class="text-xs text-slate-400">No active production</p>'; 
+    } else {
+      prod.forEach(o => { dq.innerHTML += `<div><div class="flex justify-between text-xs mb-1"><span>${o.id} — ${o.company}</span><span class="font-bold">${o.progress}%</span></div><div class="w-full bg-slate-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${o.progress}%"></div></div></div>`; });
+    }
   }
 
   updateChart(productCount);
@@ -722,6 +739,10 @@ function renderQCTable() {
   const c = document.getElementById('qcList'); 
   if(!c) return;
   c.innerHTML='';
+  if (!qcData || qcData.length === 0) {
+    c.innerHTML = '<p class="text-xs text-slate-400">Belum ada rekam log Quality Control.</p>';
+    return;
+  }
   qcData.forEach((item,idx) => {
     c.innerHTML += `<div class="border rounded-xl p-3 bg-slate-50 flex justify-between items-center text-xs"><div><p class="font-bold">${item.order} <span class="ml-2 px-2 py-0.5 rounded text-[10px] ${item.result==='PASS'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${item.result}</span></p><p class="text-slate-500 mt-1">${item.note}</p></div><button onclick="deleteQC(${idx})" class="text-red-400 hover:text-red-600">Delete</button></div>`;
   });
@@ -801,22 +822,20 @@ async function saveQCLog() {
   const chk = `[${document.getElementById('chkLogo').checked?'✓ Logo':'✗ Logo'}, ${document.getElementById('chkJahitan').checked?'✓ Jahit':'✗ Jahit'}, ${document.getElementById('chkQty').checked?'✓ Qty':'✗ Qty'}]`;
   
   const newQC = { order:o.id, result: result, note:`[${o.product}] ${chk} - ${note}` };
-  qcData.unshift(newQC);
+  toggleModal('qcModal');
   
   const today = new Date().toISOString().slice(0,10);
   if(result==='PASS') { o.status='Shipping'; o.progress=100; if(!o.dateQC) o.dateQC=today; if(!o.dateShipping) o.dateShipping=today; }
   else { o.status='Production'; o.progress=50; o.dateQC=today; o.dateShipping=''; }
   
-  renderOrdersTable(); renderQCTable(); toggleModal('qcModal');
-  
   await postData('createQC', { order: o, qc: newQC });
 }
 
 async function deleteQC(idx) { 
-  const qcItem = qcData[idx];
-  qcData.splice(idx,1); 
-  renderQCTable(); 
-  await postData('deleteQC', qcItem);
+  if (confirm('Hapus log QC ini?')) {
+    const qcItem = qcData[idx];
+    await postData('deleteQC', qcItem);
+  }
 }
 
 function openReturnModal(idx) {
@@ -832,8 +851,7 @@ async function saveReturnLog() {
   ordersData[idx].returnReason = document.getElementById('modalReturnReason').value||'-';
   ordersData[idx].returnStatus = 'Pending';
   
-  renderOrdersTable(); toggleModal('returnModal');
-  
+  toggleModal('returnModal');
   await postData('updateOrder', ordersData[idx]);
 }
 
@@ -844,7 +862,7 @@ function showSection(id,el) { document.querySelectorAll('.section').forEach(s=>s
 
 function updateChart(cats = {}) {
   const ctx = document.getElementById('categoryChart');
-  if(!ctx) return; // PROTEKSI UTAMA: Hentikan script jika canvas belum siap di layar browser
+  if(!ctx) return; 
   
   const ctx2d = ctx.getContext('2d');
   if(catChart) catChart.destroy();
@@ -883,6 +901,7 @@ function updateChart(cats = {}) {
 // ─── EXCEL EXPORT ─────────────────────────────────────────────
 function xlW(ws,ws2) { ws['!cols']=ws2.map(w=>({wch:w})); }
 
+// Penambahan pengaman pembacaan array pada ekspor Excel
 function exportFullExcel() {
   const wb  = XLSX.utils.book_new();
   const exp = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
